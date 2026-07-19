@@ -15,6 +15,11 @@ tasks: list[dict] = [
 class TaskCreate(BaseModel):
     title: str
 
+# Model for updating an existing task
+class TaskUpdate(BaseModel):
+    title: str
+    done: bool
+
 
 # Root Endpoint
 # Returns a JSON description of the system metadata
@@ -80,3 +85,43 @@ def create_task(new_task: TaskCreate):
     
     # Return the newly created resource back to the client
     return task_entry
+
+
+# --- STAGE 4 ENDPOINTS (UPDATE & DELETE) ---
+
+# 1. Update an existing task
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, updated_fields: TaskUpdate):
+    # Security Rule: Validate inputs on modification requests
+    if not updated_fields.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title cannot be empty"
+        )
+    
+    # Loop through memory to find the resource target
+    for task in tasks:
+        if task["id"] == task_id:
+            task["title"] = updated_fields.title
+            task["done"] = updated_fields.done
+            return task  # Success: Returns the newly updated task resource
+            
+    # Guard Rule: Target ID not found
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"error": f"Task {task_id} not found"}
+    )
+
+# 2. Delete an existing task
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    for index, task in enumerate(tasks):
+        if task["id"] == task_id:
+            tasks.pop(index)  # Remove the record cleanly from our in-memory list
+            return  # Success: Return nothing (FastAPI converts this to an empty 204 body)
+            
+    # Guard Rule: Target ID not found
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"error": f"Task {task_id} not found"}
+    )
