@@ -36,17 +36,20 @@ def get_root():
 # Used by production monitoring systems to verify the server is active
 @app.get("/health")
 def get_health():
+    """Verify the server operational status for monitoring infrastructure."""
     return {"status": "ok"}
 
 
 # --- STAGE 2 ENDPOINTS (READ) ---
 @app.get("/tasks")
 def get_all_tasks():
+    """Retrieve the entire collection of in-memory tasks."""
     return tasks
 
 # 2. Fetch a single, specific task by ID
 @app.get("/tasks/{task_id}")
 def get_single_task(task_id: int):
+    """Fetch a single task record by its unique numeric identifier."""
     # Loop through our in-memory data store to find a matching ID
     for task in tasks:
         if task["id"] == task_id:
@@ -62,6 +65,7 @@ def get_single_task(task_id: int):
 # --- STAGE 3 ENDPOINT (CREATE) ---
 @app.post("/tasks", status_code=status.HTTP_201_CREATED)
 def create_task(new_task: TaskCreate):
+    """Create and append a new task to the collection with input validation."""
     # Business Rule 1: Input Validation
     # If the title is empty or just white spaces, reject it immediately
     if not new_task.title.strip():
@@ -79,10 +83,10 @@ def create_task(new_task: TaskCreate):
         "title": new_task.title,
         "done": False  # New tasks are always incomplete by default
     }
-    
+
     # Save to our in-memory data collection
     tasks.append(task_entry)
-    
+
     # Return the newly created resource back to the client
     return task_entry
 
@@ -92,6 +96,7 @@ def create_task(new_task: TaskCreate):
 # 1. Update an existing task
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, updated_fields: TaskUpdate):
+    """Completely replace the state fields of an existing task."""
     # Security Rule: Validate inputs on modification requests
     if not updated_fields.title.strip():
         raise HTTPException(
@@ -115,6 +120,7 @@ def update_task(task_id: int, updated_fields: TaskUpdate):
 # 2. Delete an existing task
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int):
+    """Permanently obliterate a task record from the in-memory array list."""
     for index, task in enumerate(tasks):
         if task["id"] == task_id:
             tasks.pop(index)  # Remove the record cleanly from our in-memory list
