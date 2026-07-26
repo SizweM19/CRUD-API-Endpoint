@@ -98,3 +98,103 @@ def get_single_task(task_id: int):
         )
         
     return dict(row)
+
+# --- STAGE 2 (WEEK 3) ENDPOINT: INSERT INTO DATABASE ---
+
+@app.post("/tasks", status_code=status.HTTP_201_CREATED)
+def create_task(new_task: TaskCreate):
+    """Insert a new task directly into the SQLite database with validation."""
+    # Input Validation: Missing or whitespace-only title returns 400 Bad Request
+    if not new_task.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Title cannot be empty"
+        )
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Execute parameterized INSERT query (done defaults to 0 / False)
+    cursor.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (new_task.title.strip(), 0)
+    )
+    
+    # Save the transaction permanently to tasks.db disk file
+    conn.commit()
+    
+    # Retrieve the unique ID generated automatically by SQLite
+    new_id = cursor.lastrowid
+    
+    conn.close()
+    
+    # Return 201 Created with the new task representation
+    return {
+        "id": new_id,
+        "title": new_task.title.strip(),
+        "done": False
+    }
+
+# --- STAGE 3 (WEEK 3) ENDPOINTS: UPDATE & DELETE WITH SQL ---
+
+# 1. Update an existing task in SQLite
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, updated_fields: TaskUpdate):
+    """Update an existing task in the tasks.db SQLite database."""
+    # Input Validation: Empty title returns 400 Bad Request
+    if not updated_fields.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title cannot be empty"
+        )
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Execute parameterized UPDATE query
+    # Note: SQLite stores booleans as integers (1 for True, 0 for False)
+    cursor.execute(
+        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+        (updated_fields.title.strip(), int(updated_fields.done), task_id)
+    )
+    conn.commit()
+    
+    # Guard Rule: If 0 rows were updated, the task ID does not exist
+    if cursor.rowcount == 0:
+        conn.close()
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    conn.close()
+    
+    # Return the newly updated task entity
+    return {
+        "id": task_id,
+        "title": updated_fields.title.strip(),
+        "done": updated_fields.done
+    }
+
+
+# 2. Delete an existing task from SQLite
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    """Permanently delete a task record from tasks.db."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    
+    # Guard Rule: If 0 rows were affected, the task ID does not exist
+    if cursor.rowcount == 0:
+        conn.close()
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    conn.close()
+    # Success: Return an empty 204 No Content response
+    return
