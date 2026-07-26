@@ -1,133 +1,100 @@
+import sqlite3
 from fastapi import FastAPI, status, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# Our In-Memory Database ()
-tasks: list[dict] = [
-    {"id": 1, "title": "Setup VS Code and Python", "done": True},
-    {"id": 2, "title": "Build Stage 0 and 1 endpoints", "done": True},
-    {"id": 3, "title": "Complete full CRUD assignment", "done": False},
-]
+DB_FILE = "tasks.db"
 
-# The Pydantic Model: Defines what the client is allowed to send us
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    count = cursor.fetchone()[0]
+    if count == 0:
+        cursor.executemany(
+            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            [
+                ("Setup VS Code and Python", 1),
+                ("Build Stage 0 and 1 endpoints", 1),
+                ("Complete full CRUD assignment", 0)
+            ]
+        )
+        conn.commit()
+    conn.close()
+
+init_db()
+
+# --- PYDANTIC MODELS ---
 class TaskCreate(BaseModel):
     title: str
 
-# Model for updating an existing task
 class TaskUpdate(BaseModel):
     title: str
     done: bool
 
 
-# Root Endpoint
-# Returns a JSON description of the system metadata
-
-@app. get("/")
+# --- STAGE 1 (WEEK 2) ENDPOINTS ---
+@app.get("/")
 def get_root():
-    return{
-        "name": "Task API",
-        "version": "1.0",
-        "endpoints": ["/tasks"]
-    }
+    """Fetch API metadata and available base resource endpoints."""
+    return {"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}
 
-# STAGE 1: Health Check Endpoint
-# Used by production monitoring systems to verify the server is active
 @app.get("/health")
 def get_health():
     """Verify the server operational status for monitoring infrastructure."""
     return {"status": "ok"}
 
 
-# --- STAGE 2 ENDPOINTS (READ) ---
+# --- STAGE 1 (WEEK 3) ENDPOINTS: READ FROM DATABASE ---
+
+# 1. Fetch all tasks directly from SQLite
 @app.get("/tasks")
 def get_all_tasks():
-    """Retrieve the entire collection of in-memory tasks."""
-    return tasks
+    """Retrieve all task records from the tasks.db SQLite database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM tasks")
+    rows = cursor.fetchall()
+    
+    conn.close()  # Clean up database resources
+    
+    # Convert sqlite3.Row objects into standard dictionaries
+    return [dict(row) for row in rows]
 
-# 2. Fetch a single, specific task by ID
+
+# 2. Fetch a single task by ID from SQLite
 @app.get("/tasks/{task_id}")
 def get_single_task(task_id: int):
-    """Fetch a single task record by its unique numeric identifier."""
-    # Loop through our in-memory data store to find a matching ID
-    for task in tasks:
-        if task["id"] == task_id:
-            return task  # Found it! Return the task immediately (Defaults to 200 OK)
-            
-    # Architectural Guard: If the loop finishes and finds nothing, trigger a 404 response
-    return JSONResponse(
-        status_code = status.HTTP_404_NOT_FOUND,
-        content={"error": f"Task {task_id} not found"}
-    )
-
-
-# --- STAGE 3 ENDPOINT (CREATE) ---
-@app.post("/tasks", status_code=status.HTTP_201_CREATED)
-def create_task(new_task: TaskCreate):
-    """Create and append a new task to the collection with input validation."""
-    # Business Rule 1: Input Validation
-    # If the title is empty or just white spaces, reject it immediately
-    if not new_task.title.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Title cannot be empty"
+    """Fetch a single task record by its ID using a parameterized query."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Use ? placeholder and pass (task_id,) as a tuple for security
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    
+    conn.close()  # Clean up database resources
+    
+    # Guard Rule: If no row matches that ID, return 404
+    if row is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
         )
         
-    # Business Rule 2: Dynamically calculate the next available ID
-    next_id = max(task["id"] for task in tasks) + 1 if tasks else 1
-    
-    # Business Rule 3: Structure the complete task entity
-    task_entry = {
-        "id": next_id,
-        "title": new_task.title,
-        "done": False  # New tasks are always incomplete by default
-    }
-
-    # Save to our in-memory data collection
-    tasks.append(task_entry)
-
-    # Return the newly created resource back to the client
-    return task_entry
-
-
-# --- STAGE 4 ENDPOINTS (UPDATE & DELETE) ---
-
-# 1. Update an existing task
-@app.put("/tasks/{task_id}")
-def update_task(task_id: int, updated_fields: TaskUpdate):
-    """Completely replace the state fields of an existing task."""
-    # Security Rule: Validate inputs on modification requests
-    if not updated_fields.title.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Title cannot be empty"
-        )
-    
-    # Loop through memory to find the resource target
-    for task in tasks:
-        if task["id"] == task_id:
-            task["title"] = updated_fields.title
-            task["done"] = updated_fields.done
-            return task  # Success: Returns the newly updated task resource
-            
-    # Guard Rule: Target ID not found
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
-        content={"error": f"Task {task_id} not found"}
-    )
-
-# 2. Delete an existing task
-@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int):
-    """Permanently obliterate a task record from the in-memory array list."""
-    for index, task in enumerate(tasks):
-        if task["id"] == task_id:
-            tasks.pop(index)  # Remove the record cleanly from our in-memory list
-            return  # Success: Return nothing (FastAPI converts this to an empty 204 body)
-            
-    # Guard Rule: Target ID not found
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
-        content={"error": f"Task {task_id} not found"}
-    )
+    return dict(row)
