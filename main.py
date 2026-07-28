@@ -75,3 +75,37 @@ def get_root():
 def get_health():
     """Verify server operational status."""
     return {"status": "ok"}
+
+# --- STAGE 2 ENDPOINTS: READ FROM POSTGRES ---
+
+# 1. Fetch all tasks from PostgreSQL
+@app.get("/tasks")
+def get_all_tasks():
+    """Retrieve all task records from the PostgreSQL tasks table."""
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM tasks ORDER BY id ASC;")
+        rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+# 2. Fetch a single task by ID from PostgreSQL
+@app.get("/tasks/{task_id}")
+def get_single_task(task_id: int):
+    """Fetch a single task record by ID using a parameterized query."""
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        # Pass task_id in a tuple to %s placeholder safely
+        cursor.execute("SELECT * FROM tasks WHERE id = %s;", (task_id,))
+        task = cursor.fetchone()
+    conn.close()
+    
+    # Guard Rule: If no row matches that ID, return 404
+    if task is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": "Task not found"}
+        )
+        
+    return task
