@@ -29,11 +29,17 @@ In Week 3, this system evolved from short-term in-memory storage to a persistent
 * **Single-File Storage:** All persistent rows live in a local disk file (`tasks.db`), created automatically upon application startup.
 * **Data Persistence:** Records survive server reboots, script crashes, and environment restarts.
 
+
+
+# 🐳 Containerized Task Management CRUD API
+
+A persistent RESTful CRUD API built with Python, FastAPI, and PostgreSQL running inside Docker containers.
+
 ---
 
-## 🚀 How to Run (Clean Clone)
+## 🚀 How to Run (One Command)
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/CRUD-API-Endpoint.git](https://github.com/YOUR_USERNAME/CRUD-API-Endpoint.git)
+   git clone [https://github.com/SizweM19/CRUD-API-Endpoint.git](https://github.com/SizweM19/CRUD-API-Endpoint.git)
    cd CRUD-API-Endpoint
