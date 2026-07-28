@@ -109,3 +109,88 @@ def get_single_task(task_id: int):
         )
         
     return task
+
+# --- STAGE 3 ENDPOINTS: CREATE, UPDATE, DELETE ON POSTGRES ---
+
+# 1. Create a new task (POST)
+@app.post("/tasks", status_code=status.HTTP_201_CREATED)
+def create_task(new_task: TaskCreate):
+    """Insert a new task into PostgreSQL using RETURNING clause."""
+    # Validation Guard: Title cannot be empty or whitespace only
+    if not new_task.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title cannot be empty"
+        )
+        
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id, title, done;",
+            (new_task.title.strip(), False)
+        )
+        created_task = cursor.fetchone()
+        conn.commit()  # Save transaction to database disk volume
+    conn.close()
+    
+    return created_task
+
+
+# 2. Update an existing task (PUT)
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, updated_fields: TaskUpdate):
+    """Update title and completion status of an existing task."""
+    # Validation Guard: Title cannot be empty or whitespace only
+    if not updated_fields.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title cannot be empty"
+        )
+        
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING id, title, done;",
+            (updated_fields.title.strip(), updated_fields.done, task_id)
+        )
+        updated_task = cursor.fetchone()
+        
+        # Guard Rule: If no row matched that ID, return 404
+        if updated_task is None:
+            conn.close()
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": "Task not found"}
+            )
+            
+        conn.commit()  # Save transaction to database disk volume
+    conn.close()
+    
+    return updated_task
+
+
+# 3. Delete an existing task (DELETE)
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    """Permanently delete a task record from PostgreSQL."""
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM tasks WHERE id = %s RETURNING id;",
+            (task_id,)
+        )
+        deleted_row = cursor.fetchone()
+        
+        # Guard Rule: If no row matched that ID, return 404
+        if deleted_row is None:
+            conn.close()
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": "Task not found"}
+            )
+            
+        conn.commit()  # Save transaction to database disk volume
+    conn.close()
+    
+    # 204 No Content returns an empty body
+    return
