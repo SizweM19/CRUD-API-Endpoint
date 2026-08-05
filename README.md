@@ -43,3 +43,21 @@ A persistent RESTful CRUD API built with Python, FastAPI, and PostgreSQL running
    ```bash
    git clone [https://github.com/SizweM19/CRUD-API-Endpoint.git](https://github.com/SizweM19/CRUD-API-Endpoint.git)
    cd CRUD-API-Endpoint
+
+# 🔒 Supabase Auth & Protected API Practice
+
+A secure FastAPI backend integrating **Supabase Auth** for identity management, JWT token verification via FastAPI dependencies, and interactive Swagger UI bearer authentication.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- Python 3.10+
+- A free [Supabase](https://supabase.com) account
+
+### 2. Environment Setup
+Clone the repository and install the dependencies:
+
+```bash
+python -m pip install fastapi uvicorn supabase python-dotenv
