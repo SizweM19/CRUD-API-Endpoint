@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from supabase import create_client, Client
 
@@ -15,6 +16,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Auth API Practice")
 
+# Configure HTTPBearer security scheme for Swagger UI padlock icon
+security = HTTPBearer()
+
 
 class UserAuth(BaseModel):
     email: str
@@ -24,6 +28,32 @@ class UserAuth(BaseModel):
 @app.get("/")
 def root():
     return {"message": "Server running and connected to Supabase"}
+
+
+# ---------------------------------------------------------
+# STAGE 5: REUSABLE GUARD WITH HTTPBEARER SECURITY SCHEME
+# ---------------------------------------------------------
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Dependency that extracts the bearer token and verifies it with Supabase."""
+    token = credentials.credentials  # Extract token automatically
+
+    try:
+        user_response = supabase.auth.get_user(token)
+        user = user_response.user
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+        return user
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
 
 # ---------------------------------------------------------
@@ -83,48 +113,45 @@ def login(credentials: UserAuth):
 
 
 # ---------------------------------------------------------
-# STAGE 2 & STAGE 3: PUBLIC & VERIFIED PROTECTED ROUTES
+# STAGE 4: LOG OUT (PROTECTED)
+# ---------------------------------------------------------
+@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(current_user: dict = Depends(get_current_user)):
+    try:
+        supabase.auth.sign_out()
+        return None
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
+
+
+# ---------------------------------------------------------
+# STAGE 2: PUBLIC ROUTE
 # ---------------------------------------------------------
 @app.get("/public/info", status_code=status.HTTP_200_OK)
 def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
 
+# ---------------------------------------------------------
+# STAGE 4 & 5: PROTECTED ROUTES
+# ---------------------------------------------------------
 @app.get("/protected/profile", status_code=status.HTTP_200_OK)
-def protected_profile(authorization: str = Header(None)):
-    # 1. Check if Authorization header is missing or malformed [cite: 1574, 1586]
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Access token required",
-        )
+def protected_profile(current_user: dict = Depends(get_current_user)):
+    return {
+        "message": "Access granted",
+        "user": {
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "created_at": str(current_user.created_at),
+        },
+    }
 
-    # 2. Extract token string [cite: 1586]
-    token = authorization.split(" ")[1]
 
-    # 3. Ask Supabase to verify the token [cite: 1587-1588]
-    try:
-        user_response = supabase.auth.get_user(token)
-        user = user_response.user
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
-
-        # 4. Return safe user metadata on successful verification [cite: 1590]
-        return {
-            "message": "Access granted",
-            "user": {
-                "id": str(user.id),
-                "email": user.email,
-                "created_at": str(user.created_at),
-            },
-        }
-    except Exception:
-        # Invalid, expired, or tampered token returns 401 [cite: 1589]
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+@app.get("/protected/dashboard", status_code=status.HTTP_200_OK)
+def protected_dashboard(current_user: dict = Depends(get_current_user)):
+    return {
+        "message": f"Welcome to your dashboard, {current_user.email}!",
+        "stats": {"audits_completed": 5, "account_status": "Active"},
+    }
