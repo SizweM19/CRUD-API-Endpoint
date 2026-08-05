@@ -83,7 +83,7 @@ def login(credentials: UserAuth):
 
 
 # ---------------------------------------------------------
-# STAGE 2: PUBLIC & PROTECTED ROUTES
+# STAGE 2 & STAGE 3: PUBLIC & VERIFIED PROTECTED ROUTES
 # ---------------------------------------------------------
 @app.get("/public/info", status_code=status.HTTP_200_OK)
 def public_info():
@@ -92,17 +92,39 @@ def public_info():
 
 @app.get("/protected/profile", status_code=status.HTTP_200_OK)
 def protected_profile(authorization: str = Header(None)):
-    # Check if Authorization header is missing or malformed
+    # 1. Check if Authorization header is missing or malformed [cite: 1574, 1586]
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token required",
         )
 
-    # Extract token string after 'Bearer '
+    # 2. Extract token string [cite: 1586]
     token = authorization.split(" ")[1]
 
-    return {
-        "message": "Header present (unverified check)",
-        "token_presented": token[:10] + "...",
-    }
+    # 3. Ask Supabase to verify the token [cite: 1587-1588]
+    try:
+        user_response = supabase.auth.get_user(token)
+        user = user_response.user
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        # 4. Return safe user metadata on successful verification [cite: 1590]
+        return {
+            "message": "Access granted",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "created_at": str(user.created_at),
+            },
+        }
+    except Exception:
+        # Invalid, expired, or tampered token returns 401 [cite: 1589]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
